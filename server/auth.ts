@@ -2,8 +2,7 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
 import session from "express-session";
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
-import { promisify } from "util";
+import { createHash, randomBytes } from "crypto";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 
@@ -13,19 +12,20 @@ declare global {
   }
 }
 
-const scryptAsync = promisify(scrypt);
-
-async function hashPassword(password: string) {
-  const salt = randomBytes(16).toString("hex");
-  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
-  return `${buf.toString("hex")}.${salt}`;
+// Simple hash function for demo purposes
+function hashPassword(password: string, salt = randomBytes(16).toString('hex')) {
+  const hash = createHash('sha256')
+    .update(password + salt)
+    .digest('hex');
+  return `${hash}:${salt}`;
 }
 
-async function comparePasswords(supplied: string, stored: string) {
-  const [hashed, salt] = stored.split(".");
-  const hashedBuf = Buffer.from(hashed, "hex");
-  const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-  return timingSafeEqual(hashedBuf, suppliedBuf);
+function comparePasswords(supplied: string, stored: string) {
+  const [hash, salt] = stored.split(':');
+  const suppliedHash = createHash('sha256')
+    .update(supplied + salt)
+    .digest('hex');
+  return hash === suppliedHash;
 }
 
 export function setupAuth(app: Express) {
@@ -54,11 +54,20 @@ export function setupAuth(app: Express) {
       async (email, password, done) => {
         try {
           const user = await storage.getUserByEmail(email);
-          if (!user || !(await comparePasswords(password, user.password))) {
+          if (!user) {
+            return done(null, false, { message: "Invalid email or password" });
+          }
+          
+          // Debug login attempts
+          console.log(`Attempting login for ${email}`);
+          
+          const isValid = comparePasswords(password, user.password);
+          if (!isValid) {
             return done(null, false, { message: "Invalid email or password" });
           }
           return done(null, user);
         } catch (err) {
+          console.error("Login error:", err);
           return done(err);
         }
       }
