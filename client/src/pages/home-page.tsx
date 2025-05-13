@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Bell } from "lucide-react";
@@ -9,18 +8,28 @@ import LeaderboardTab from "@/components/tabs/leaderboard-tab";
 import RewardsTab from "@/components/tabs/rewards-tab";
 import BadgeUnlockModal from "@/components/badge-unlock-modal";
 import { useLocation } from "wouter";
+import { Badge } from "@shared/schema";
 
 type TabValues = "passport" | "badges" | "leaderboard" | "rewards";
 
+// Mock user for demo purposes
+const demoUser = {
+  id: 2,
+  name: "Demo User",
+  email: "demo@jubelbeer.com",
+  city: "London",
+  total_checkins: 12,
+  username: "demouser"
+};
+
 export default function HomePage() {
-  const { user, logoutMutation } = useAuth();
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState<TabValues>("passport");
   const [showBadgeModal, setShowBadgeModal] = useState(false);
-  const [unlockedBadge, setUnlockedBadge] = useState<any>(null);
+  const [unlockedBadge, setUnlockedBadge] = useState<Badge | null>(null);
   
+  // For demo purposes only
   const handleLogout = () => {
-    logoutMutation.mutate();
     setLocation("/auth");
   };
 
@@ -29,7 +38,7 @@ export default function HomePage() {
   };
   
   // This function would be called when a new badge is unlocked
-  const showBadgeUnlockModal = (badge: any) => {
+  const showBadgeUnlockModal = (badge: Badge) => {
     setUnlockedBadge(badge);
     setShowBadgeModal(true);
   };
@@ -54,7 +63,7 @@ export default function HomePage() {
             </button>
             <button onClick={handleLogout}>
               <div className="h-8 w-8 rounded-full border-2 border-primary bg-secondary flex items-center justify-center text-xs font-bold">
-                {user?.name?.charAt(0).toUpperCase() || "U"}
+                {demoUser.name.charAt(0).toUpperCase()}
               </div>
             </button>
           </div>
