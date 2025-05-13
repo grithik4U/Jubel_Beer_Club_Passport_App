@@ -1,0 +1,56 @@
+Build a complete “Jubel Beer Club – Passport” MVP in one week, covering all layers from data model through deployment. Structure your output in clearly labeled sections: Data Model → Backend API → Frontend → AI Automation → DevOps/Deployment. Provide code scaffolding, configuration examples, and integration points. Include comments and TODOs so a small team can pick up and finish each piece.
+1. Data Model
+
+Define PostgreSQL schemas for:
+users (id, email, name, city, total_checkins)
+venues (id, name, address, lat, lng)
+checkins (id, user_id, venue_id, timestamp)
+badges (id, name, description, icon_url, threshold)
+user_badges (id, user_id, badge_id, unlocked_at)
+rewards (id, badge_id, code, details)
+Generate SQL DDL statements and example seed data.
+
+2. Backend API (Node.js + Express)
+
+Scaffold an Express app with:
+JWT auth (/api/auth/signup, /api/auth/login)
+User profile endpoints (/api/users/me)
+Check-in logic (POST /api/checkins, /api/checkins/history) that:
+Inserts a check-in
+Increments users.total_checkins
+Checks badge thresholds and, if met, creates user_badges entries and triggers an AI notification job
+Badge endpoints (GET /api/badges, /api/leaderboard)
+Rewards endpoint (POST /api/rewards/redeem)
+Include route handlers, model definitions (e.g. using Sequelize or TypeORM), and sample middleware for authentication and error handling.
+
+3. Frontend (React Native + Expo)
+
+Set up an Expo project with React Navigation:
+Auth Stack: Signup/Login screens
+Main Tabs:
+Passport: Check-In button, nearby venue list or QR scanner, progress bar
+Badges: Grid of badge cards (unlocked vs locked)
+Leaderboard: Local/national toggle list
+Rewards: List of unlocked rewards with redemption buttons
+Build reusable components: <CheckInButton>, <BadgeCard>, <LeaderboardItem>, <RewardItem>
+Manage state via Context or Zustand (auth token, user data, badge statuses)
+Show animations/confetti on badge unlock
+Produce example JSX and style stubs.
+
+4. AI Automation (Lovable AI Tasks)
+
+Onboarding & Milestone Messaging
+Task: generateWelcomeMessage(user) and generateCongratsMessage(user, badge)
+Integration: After user signup or badge unlock, call Lovable to craft personalized text, then send via email (e.g. SendGrid) and/or push notification
+Reward Dispatch
+Task: webhook handler that receives { user, badge, reward }, uses Lovable to generate reward email body, and sends it
+Content Moderation
+Task: hook into new user inputs (e.g. profile bio) and call moderation API to filter profanity/hate speech before saving
+Provide: sample prompt templates, example function signatures, and code snippets for calling Lovable’s API
+5. DevOps & Deployment
+
+Containerization: Dockerfile for backend
+CI/CD: GitHub Actions workflow to lint, test, and deploy on push to main
+Backend Hosting: Example Helm/Heroku config with environment variables (DATABASE_URL, JWT_SECRET, LOVABLE_API_KEY, SENDGRID_KEY)
+Database Migrations: Use Knex/Sequelize CLI scripts
+Frontend Deployment: Expo OTA updates, instructions for TestFlight and Android beta
