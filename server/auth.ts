@@ -1,14 +1,13 @@
-import passport from "passport";
-import { Strategy as LocalStrategy } from "passport-local";
-import { Express } from "express";
+import { Express, Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { createHash, randomBytes } from "crypto";
 import { storage } from "./storage";
-import { User as SelectUser } from "@shared/schema";
+import { User } from "@shared/schema";
 
-declare global {
-  namespace Express {
-    interface User extends SelectUser {}
+// Define session data structure
+declare module 'express-session' {
+  interface SessionData {
+    userId?: number;
   }
 }
 
@@ -20,7 +19,7 @@ function hashPassword(password: string, salt = randomBytes(16).toString('hex')) 
   return `${hash}:${salt}`;
 }
 
-function comparePasswords(supplied: string, stored: string) {
+function comparePasswords(supplied: string, stored: string): boolean {
   try {
     // Check if the password contains the separator
     if (!stored.includes(':')) {
@@ -42,9 +41,34 @@ function comparePasswords(supplied: string, stored: string) {
   }
 }
 
+// Middleware to check if user is authenticated
+function isAuthenticated(req: Request, res: Response, next: NextFunction) {
+  if (req.session.userId) {
+    next();
+  } else {
+    res.status(401).json({ message: "Not authenticated" });
+  }
+}
+
+// Middleware to attach user to request object
+async function attachUser(req: Request & { user?: User }, res: Response, next: NextFunction) {
+  if (req.session.userId) {
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (user) {
+        req.user = user;
+      }
+    } catch (error) {
+      console.error("Error fetching user:", error);
+    }
+  }
+  next();
+}
+
 export function setupAuth(app: Express) {
   const sessionSecret = process.env.SESSION_SECRET || randomBytes(32).toString("hex");
   
+  // Session configuration
   const sessionSettings: session.SessionOptions = {
     secret: sessionSecret,
     resave: false,
@@ -58,53 +82,10 @@ export function setupAuth(app: Express) {
 
   app.set("trust proxy", 1);
   app.use(session(sessionSettings));
-  app.use(passport.initialize());
-  app.use(passport.session());
+  app.use(attachUser);
 
-  // Set up local strategy with email instead of username
-  passport.use(
-    new LocalStrategy(
-      { usernameField: 'email' },
-      async (email, password, done) => {
-        try {
-          console.log(`Attempting login for ${email}`);
-          
-          const user = await storage.getUserByEmail(email);
-          if (!user) {
-            console.log(`User not found: ${email}`);
-            return done(null, false, { message: "Invalid email or password" });
-          }
-          
-          console.log(`User found: ${user.id} (${user.email})`);
-          console.log(`Stored password format: ${user.password}`);
-          
-          const isValid = comparePasswords(password, user.password);
-          if (!isValid) {
-            console.log(`Password invalid for user: ${user.id}`);
-            return done(null, false, { message: "Invalid email or password" });
-          }
-          
-          console.log(`Login successful for user: ${user.id}`);
-          return done(null, user);
-        } catch (err) {
-          console.error("Login error:", err);
-          return done(err);
-        }
-      }
-    )
-  );
-
-  passport.serializeUser((user, done) => done(null, user.id));
-  passport.deserializeUser(async (id: number, done) => {
-    try {
-      const user = await storage.getUser(id);
-      done(null, user);
-    } catch (err) {
-      done(err);
-    }
-  });
-
-  app.post("/api/auth/signup", async (req, res, next) => {
+  // Authentication routes
+  app.post("/api/auth/signup", async (req, res) => {
     try {
       // Check if email already exists
       const existingUser = await storage.getUserByEmail(req.body.email);
@@ -119,49 +100,91 @@ export function setupAuth(app: Express) {
       const user = await storage.createUser({
         ...req.body,
         username,
-        password: await hashPassword(req.body.password),
+        password: hashPassword(req.body.password),
         total_checkins: 0
       });
 
-      // Log in the user
-      req.login(user, (err) => {
-        if (err) return next(err);
-        // Don't send password back to client
-        const { password, ...userWithoutPassword } = user;
-        res.status(201).json(userWithoutPassword);
-      });
-    } catch (err) {
-      next(err);
+      // Set session
+      req.session.userId = user.id;
+      
+      // Don't send password back to client
+      const { password, ...userWithoutPassword } = user;
+      res.status(201).json(userWithoutPassword);
+    } catch (error) {
+      console.error("Signup error:", error);
+      res.status(500).json({ message: "Failed to create user" });
     }
   });
 
-  app.post("/api/auth/login", (req, res, next) => {
-    passport.authenticate("local", (err, user, info) => {
-      if (err) return next(err);
-      if (!user) return res.status(401).json({ message: info?.message || "Invalid credentials" });
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      console.log(`Login attempt for email: ${email}`);
       
-      req.login(user, (err) => {
-        if (err) return next(err);
-        // Don't send password back to client
-        const { password, ...userWithoutPassword } = user;
-        res.status(200).json(userWithoutPassword);
-      });
-    })(req, res, next);
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
+      }
+      
+      // Find user by email
+      const user = await storage.getUserByEmail(email);
+      console.log(`User lookup result for ${email}:`, user ? `Found (ID: ${user.id})` : "Not found");
+      
+      if (!user) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      
+      // Check password
+      const passwordValid = comparePasswords(password, user.password);
+      console.log(`Password validation result for ${email}: ${passwordValid}`);
+      
+      if (!passwordValid) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      
+      // Set session
+      req.session.userId = user.id;
+      console.log(`Setting session for user ${user.id}`);
+      
+      // Don't send password back to client
+      const { password: _, ...userWithoutPassword } = user;
+      res.status(200).json(userWithoutPassword);
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
   });
 
-  app.post("/api/auth/logout", (req, res, next) => {
-    req.logout((err) => {
-      if (err) return next(err);
+  app.post("/api/auth/logout", (req, res) => {
+    // Clear session
+    req.session.destroy((err) => {
+      if (err) {
+        console.error("Logout error:", err);
+        return res.status(500).json({ message: "Logout failed" });
+      }
       res.sendStatus(200);
     });
   });
 
-  app.get("/api/users/me", (req, res) => {
-    if (!req.isAuthenticated()) {
+  app.get("/api/users/me", async (req, res) => {
+    if (!req.session.userId) {
       return res.status(401).json({ message: "Not authenticated" });
     }
-    // Don't send password back to client
-    const { password, ...userWithoutPassword } = req.user;
-    res.json(userWithoutPassword);
+    
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Don't send password back to client
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      res.status(500).json({ message: "Failed to fetch user profile" });
+    }
   });
+  
+  // Export the auth middlewares
+  return { isAuthenticated };
 }

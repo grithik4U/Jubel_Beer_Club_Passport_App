@@ -1,21 +1,18 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request as ExpressRequest, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { z } from "zod";
-import { insertCheckinSchema, insertRewardSchema } from "@shared/schema";
+import { insertCheckinSchema, insertRewardSchema, User } from "@shared/schema";
 
-// Middleware to check if user is authenticated
-const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
-  if (req.isAuthenticated()) {
-    return next();
-  }
-  res.status(401).json({ message: "Authentication required" });
-};
+// Extend Request to include user
+interface Request extends ExpressRequest {
+  user?: User;
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Set up authentication routes
-  setupAuth(app);
+  // Set up authentication routes and get middleware
+  const { isAuthenticated } = setupAuth(app);
 
   // User profile endpoints
   app.get("/api/users/:id", isAuthenticated, async (req, res) => {
