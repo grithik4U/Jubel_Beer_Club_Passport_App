@@ -21,11 +21,25 @@ function hashPassword(password: string, salt = randomBytes(16).toString('hex')) 
 }
 
 function comparePasswords(supplied: string, stored: string) {
-  const [hash, salt] = stored.split(':');
-  const suppliedHash = createHash('sha256')
-    .update(supplied + salt)
-    .digest('hex');
-  return hash === suppliedHash;
+  try {
+    // Check if the password contains the separator
+    if (!stored.includes(':')) {
+      console.error("Invalid password format - missing separator");
+      return false;
+    }
+    
+    const [hash, salt] = stored.split(':');
+    const suppliedHash = createHash('sha256')
+      .update(supplied + salt)
+      .digest('hex');
+      
+    console.log(`Comparing passwords - match: ${hash === suppliedHash}`);
+    
+    return hash === suppliedHash;
+  } catch (error) {
+    console.error("Password comparison error:", error);
+    return false;
+  }
 }
 
 export function setupAuth(app: Express) {
@@ -53,18 +67,24 @@ export function setupAuth(app: Express) {
       { usernameField: 'email' },
       async (email, password, done) => {
         try {
+          console.log(`Attempting login for ${email}`);
+          
           const user = await storage.getUserByEmail(email);
           if (!user) {
+            console.log(`User not found: ${email}`);
             return done(null, false, { message: "Invalid email or password" });
           }
           
-          // Debug login attempts
-          console.log(`Attempting login for ${email}`);
+          console.log(`User found: ${user.id} (${user.email})`);
+          console.log(`Stored password format: ${user.password}`);
           
           const isValid = comparePasswords(password, user.password);
           if (!isValid) {
+            console.log(`Password invalid for user: ${user.id}`);
             return done(null, false, { message: "Invalid email or password" });
           }
+          
+          console.log(`Login successful for user: ${user.id}`);
           return done(null, user);
         } catch (err) {
           console.error("Login error:", err);
