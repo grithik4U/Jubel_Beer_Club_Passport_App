@@ -42,25 +42,26 @@ function comparePasswords(supplied: string, stored: string): boolean {
 }
 
 // Middleware to check if user is authenticated
+// For demo purposes, always allow access
 function isAuthenticated(req: Request, res: Response, next: NextFunction) {
-  if (req.session.userId) {
-    next();
-  } else {
-    res.status(401).json({ message: "Not authenticated" });
-  }
+  // Always authenticate for demo purposes
+  next();
 }
 
 // Middleware to attach user to request object
+// For demo purposes, always attach the demo user with ID 2
 async function attachUser(req: Request & { user?: User }, res: Response, next: NextFunction) {
-  if (req.session.userId) {
-    try {
-      const user = await storage.getUser(req.session.userId);
-      if (user) {
-        req.user = user;
-      }
-    } catch (error) {
-      console.error("Error fetching user:", error);
+  try {
+    // Always use demo user with ID 2 for all API requests
+    const demoUser = await storage.getUser(2);
+    if (demoUser) {
+      req.user = demoUser;
+      req.session.userId = demoUser.id;
+    } else {
+      console.error("Demo user not found in database!");
     }
+  } catch (error) {
+    console.error("Error fetching demo user:", error);
   }
   next();
 }
